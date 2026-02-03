@@ -1330,9 +1330,45 @@
 
       _startRecording() {
         const canvas = document.getElementById('asciiCanvas');
+        const container = document.getElementById('canvasContainer');
 
-        // Get canvas stream at 30fps
-        const stream = canvas.captureStream(30);
+        // Store original dimensions for restoration
+        this._originalContainerWidth = container.style.width;
+        this._originalContainerHeight = container.style.height;
+
+        // Force high-quality output: minimum 1080p while preserving aspect ratio
+        const minHeight = 1080;
+        const minWidth = 1920;
+        const sourceAspect = this.sourceWidth / this.sourceHeight;
+
+        let recordWidth, recordHeight;
+        if (sourceAspect >= 1) {
+          // Landscape or square
+          recordWidth = Math.max(minWidth, this.sourceWidth);
+          recordHeight = recordWidth / sourceAspect;
+        } else {
+          // Portrait
+          recordHeight = Math.max(minHeight, this.sourceHeight);
+          recordWidth = recordHeight * sourceAspect;
+        }
+
+        // Ensure minimum dimensions
+        if (recordHeight < minHeight) {
+          recordHeight = minHeight;
+          recordWidth = recordHeight * sourceAspect;
+        }
+
+        // Round to even numbers (required for video encoding)
+        recordWidth = Math.round(recordWidth / 2) * 2;
+        recordHeight = Math.round(recordHeight / 2) * 2;
+
+        // Resize container to high-quality dimensions for recording
+        container.style.width = `${recordWidth}px`;
+        container.style.height = `${recordHeight}px`;
+        this.renderer._handleResize();
+
+        // Get canvas stream at 60fps for smoother output
+        const stream = canvas.captureStream(60);
 
         // Try different codecs for better compatibility
         const mimeTypes = [
@@ -1352,13 +1388,17 @@
 
         if (!selectedMimeType) {
           alert('Video recording is not supported in this browser');
+          // Restore original size
+          container.style.width = this._originalContainerWidth;
+          container.style.height = this._originalContainerHeight;
+          this.renderer._handleResize();
           return;
         }
 
         this.recordedChunks = [];
         this.mediaRecorder = new MediaRecorder(stream, {
           mimeType: selectedMimeType,
-          videoBitsPerSecond: 8000000 // 8 Mbps for good quality
+          videoBitsPerSecond: 50000000 // 50 Mbps for high quality
         });
 
         this.mediaRecorder.ondataavailable = (e) => {
@@ -1390,10 +1430,15 @@
         }
         // For globe, user must manually stop recording
 
+        // Store recording resolution for filename
+        this._recordingWidth = recordWidth;
+        this._recordingHeight = recordHeight;
+
         // Update UI
         this.recordBtn.style.display = 'none';
         this.stopRecordBtn.style.display = 'block';
         this.recordingStatus.style.display = 'block';
+        this.recordingStatus.innerHTML = `⏺ Recording ${recordWidth}x${recordHeight} @ 60fps`;
       }
 
       _stopRecording() {
@@ -1407,10 +1452,19 @@
             this._onVideoEnded = null;
           }
 
+          // Restore original container size
+          if (this._originalContainerWidth && this._originalContainerHeight) {
+            const container = document.getElementById('canvasContainer');
+            container.style.width = this._originalContainerWidth;
+            container.style.height = this._originalContainerHeight;
+            this.renderer._handleResize();
+          }
+
           // Update UI
           this.recordBtn.style.display = 'block';
           this.stopRecordBtn.style.display = 'none';
           this.recordingStatus.style.display = 'none';
+          this.recordingStatus.innerHTML = '⏺ Recording...'; // Reset for next time
         }
       }
 
@@ -1418,7 +1472,10 @@
         const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.download = 'ascii-art-video.webm';
+        const resolution = this._recordingHeight >= 1080 ? '1080p' :
+                          this._recordingHeight >= 720 ? '720p' :
+                          `${this._recordingHeight}p`;
+        link.download = `ascii-art-${resolution}-${this._recordingWidth}x${this._recordingHeight}.webm`;
         link.href = url;
         link.click();
         URL.revokeObjectURL(url);
@@ -1514,11 +1571,60 @@
           return;
         }
 
+        const container = document.getElementById('canvasContainer');
         const canvas = document.getElementById('asciiCanvas');
-        const link = document.createElement('a');
-        link.download = 'ascii-art.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
+
+        // Store original dimensions
+        const originalWidth = container.style.width;
+        const originalHeight = container.style.height;
+
+        // Calculate high-quality export dimensions (minimum 1080p height)
+        const minHeight = 1080;
+        const sourceAspect = this.sourceWidth / this.sourceHeight;
+
+        let exportWidth, exportHeight;
+        if (sourceAspect >= 1) {
+          // Landscape or square
+          exportHeight = Math.max(minHeight, this.sourceHeight);
+          exportWidth = exportHeight * sourceAspect;
+        } else {
+          // Portrait
+          exportHeight = Math.max(minHeight, this.sourceHeight);
+          exportWidth = exportHeight * sourceAspect;
+        }
+
+        // Round to integers
+        exportWidth = Math.round(exportWidth);
+        exportHeight = Math.round(exportHeight);
+
+        // Temporarily resize for high-quality export
+        container.style.width = `${exportWidth}px`;
+        container.style.height = `${exportHeight}px`;
+        this.renderer._handleResize();
+
+        // Force a redraw at high resolution
+        if (this.isGlobe) {
+          const gl = this.renderer.gl;
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, this.renderer.videoTex);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.globeCanvas);
+          this.renderer._updateCropUniforms();
+        }
+        this.renderer._drawFrame();
+
+        // Use requestAnimationFrame to ensure the render is complete
+        requestAnimationFrame(() => {
+          const link = document.createElement('a');
+          link.download = `ascii-art-${exportWidth}x${exportHeight}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+
+          // Restore original size
+          container.style.width = originalWidth;
+          container.style.height = originalHeight;
+          this.renderer._handleResize();
+        });
       }
     }
 
