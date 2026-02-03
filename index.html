@@ -1343,31 +1343,10 @@
 
       _startRecording() {
         const canvas = document.getElementById('asciiCanvas');
-        const container = document.getElementById('canvasContainer');
 
-        // Store original dimensions for restoration
-        this._originalContainerWidth = container.style.width;
-        this._originalContainerHeight = container.style.height;
-
-        // Scale up proportionally to minimum 1080p on the smallest dimension
-        const minDimension = 1080;
-        const scale = Math.max(1, minDimension / Math.min(this.sourceWidth, this.sourceHeight));
-
-        // Scale both dimensions equally to preserve exact aspect ratio
-        let recordWidth = Math.round(this.sourceWidth * scale);
-        let recordHeight = Math.round(this.sourceHeight * scale);
-
-        // Round to even numbers (required for video encoding)
-        recordWidth = Math.round(recordWidth / 2) * 2;
-        recordHeight = Math.round(recordHeight / 2) * 2;
-
-        // Resize container to high-quality dimensions for recording
-        container.style.width = `${recordWidth}px`;
-        container.style.height = `${recordHeight}px`;
-        this.renderer._handleResize();
-
-        // Disable cropping to show full source content
-        this.renderer.disableCrop();
+        // Get current canvas dimensions for filename
+        this._recordingWidth = canvas.width;
+        this._recordingHeight = canvas.height;
 
         // Get canvas stream at 60fps for smoother output
         const stream = canvas.captureStream(60);
@@ -1390,10 +1369,6 @@
 
         if (!selectedMimeType) {
           alert('Video recording is not supported in this browser');
-          // Restore original size
-          container.style.width = this._originalContainerWidth;
-          container.style.height = this._originalContainerHeight;
-          this.renderer._handleResize();
           return;
         }
 
@@ -1432,15 +1407,11 @@
         }
         // For globe, user must manually stop recording
 
-        // Store recording resolution for filename
-        this._recordingWidth = recordWidth;
-        this._recordingHeight = recordHeight;
-
         // Update UI
         this.recordBtn.style.display = 'none';
         this.stopRecordBtn.style.display = 'block';
         this.recordingStatus.style.display = 'block';
-        this.recordingStatus.innerHTML = `⏺ Recording ${recordWidth}x${recordHeight} @ 60fps`;
+        this.recordingStatus.innerHTML = `⏺ Recording ${this._recordingWidth}x${this._recordingHeight} @ 60fps`;
       }
 
       _stopRecording() {
@@ -1452,15 +1423,6 @@
           if (this._onVideoEnded) {
             this.video.removeEventListener('ended', this._onVideoEnded);
             this._onVideoEnded = null;
-          }
-
-          // Restore original container size and crop behavior
-          if (this._originalContainerWidth && this._originalContainerHeight) {
-            const container = document.getElementById('canvasContainer');
-            container.style.width = this._originalContainerWidth;
-            container.style.height = this._originalContainerHeight;
-            this.renderer._handleResize();
-            this.renderer.enableCrop();
           }
 
           // Update UI
@@ -1574,52 +1536,11 @@
           return;
         }
 
-        const container = document.getElementById('canvasContainer');
         const canvas = document.getElementById('asciiCanvas');
-
-        // Store original dimensions
-        const originalWidth = container.style.width;
-        const originalHeight = container.style.height;
-
-        // Scale up proportionally to minimum 1080p on the smallest dimension
-        const minDimension = 1080;
-        const scale = Math.max(1, minDimension / Math.min(this.sourceWidth, this.sourceHeight));
-
-        // Scale both dimensions equally to preserve exact aspect ratio
-        const exportWidth = Math.round(this.sourceWidth * scale);
-        const exportHeight = Math.round(this.sourceHeight * scale);
-
-        // Temporarily resize for high-quality export
-        container.style.width = `${exportWidth}px`;
-        container.style.height = `${exportHeight}px`;
-        this.renderer._handleResize();
-
-        // Disable cropping to show full source content
-        this.renderer.disableCrop();
-
-        // Force a redraw at high resolution
-        if (this.isGlobe) {
-          const gl = this.renderer.gl;
-          gl.activeTexture(gl.TEXTURE0);
-          gl.bindTexture(gl.TEXTURE_2D, this.renderer.videoTex);
-          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.globeCanvas);
-        }
-        this.renderer._drawFrame();
-
-        // Use requestAnimationFrame to ensure the render is complete
-        requestAnimationFrame(() => {
-          const link = document.createElement('a');
-          link.download = `ascii-art-${exportWidth}x${exportHeight}.png`;
-          link.href = canvas.toDataURL('image/png');
-          link.click();
-
-          // Restore original size and crop behavior
-          container.style.width = originalWidth;
-          container.style.height = originalHeight;
-          this.renderer._handleResize();
-          this.renderer.enableCrop();
-        });
+        const link = document.createElement('a');
+        link.download = `ascii-art-${canvas.width}x${canvas.height}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
       }
     }
 
