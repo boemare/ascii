@@ -778,6 +778,19 @@
         gl.uniform2f(this.locs.uCropMax, max[0], max[1]);
       }
 
+      // Disable cropping - show full source (for high-quality export)
+      disableCrop() {
+        const gl = this.gl;
+        gl.useProgram(this.prog);
+        gl.uniform2f(this.locs.uCropMin, 0, 0);
+        gl.uniform2f(this.locs.uCropMax, 1, 1);
+      }
+
+      // Re-enable normal crop behavior
+      enableCrop() {
+        this._updateCropUniforms();
+      }
+
       _createProgram(vs, fs) {
         const gl = this.gl;
         const v = gl.createShader(gl.VERTEX_SHADER);
@@ -1353,6 +1366,9 @@
         container.style.height = `${recordHeight}px`;
         this.renderer._handleResize();
 
+        // Disable cropping to show full source content
+        this.renderer.disableCrop();
+
         // Get canvas stream at 60fps for smoother output
         const stream = canvas.captureStream(60);
 
@@ -1438,12 +1454,13 @@
             this._onVideoEnded = null;
           }
 
-          // Restore original container size
+          // Restore original container size and crop behavior
           if (this._originalContainerWidth && this._originalContainerHeight) {
             const container = document.getElementById('canvasContainer');
             container.style.width = this._originalContainerWidth;
             container.style.height = this._originalContainerHeight;
             this.renderer._handleResize();
+            this.renderer.enableCrop();
           }
 
           // Update UI
@@ -1577,6 +1594,9 @@
         container.style.height = `${exportHeight}px`;
         this.renderer._handleResize();
 
+        // Disable cropping to show full source content
+        this.renderer.disableCrop();
+
         // Force a redraw at high resolution
         if (this.isGlobe) {
           const gl = this.renderer.gl;
@@ -1584,7 +1604,6 @@
           gl.bindTexture(gl.TEXTURE_2D, this.renderer.videoTex);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
           gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.globeCanvas);
-          this.renderer._updateCropUniforms();
         }
         this.renderer._drawFrame();
 
@@ -1595,10 +1614,11 @@
           link.href = canvas.toDataURL('image/png');
           link.click();
 
-          // Restore original size
+          // Restore original size and crop behavior
           container.style.width = originalWidth;
           container.style.height = originalHeight;
           this.renderer._handleResize();
+          this.renderer.enableCrop();
         });
       }
     }
